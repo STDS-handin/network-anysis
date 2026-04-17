@@ -1,0 +1,377 @@
+---
+title: "Network Analysis"
+author: "Etienne"
+date: today
+format:
+  html:
+    embed-resources: true
+    toc: true
+    toc-location: right
+engine: knitr
+execute:
+  freeze: auto
+---
+
+```{r}
+#| message: false
+#| warning: false
+
+library(sf)
+library(sfnetworks)
+library(remotes)
+library(tmap)
+library(tidyverse)
+```
+
+# Centrality
+
+::: {.callout-note title="Task 1"}
+Load in the bicycle network data using `sf`
+:::
+
+This is of course easily done using `st_layers` (for scouting the layers) and `st_read`.
+
+```{r}
+#| message: false
+#| warning: false
+#| results: hide
+
+sf::st_layers("./data/veloland.gpkg")
+# there is only one layer anyways, so we do not need to choose.
+
+bicycle_routes <- sf::st_read("./data/veloland.gpkg", layer = "veloland", quiet = TRUE)
+
+
+```
+
+
+Lets have a quick look just to get an overview.
+```{r}
+#| message: false
+#| warning: false
+
+tmap_mode("view")
+
+tm_shape(bicycle_routes) +
+    tm_lines() +
+tm_layout(main.title = "Swiss Cycling Network (Veloland)", main.title.size = 1)
+
+
+
+
+```
+
+::: {.callout-note title="Task 2"}
+Convert the data into an undirected network using `sfnetworks`.
+:::
+
+An undirected network can be created by setting the parameter `directed` to `FALSE`.
+
+```{r}
+
+bicycle_network <- as_sfnetwork(bicycle_routes, directed = FALSE)
+```
+
+
+If the network is not connected, then problems will arise later on during the calculation of the centrality measures and also during shortest path calculation. So lets check this.
+```{r}
+igraph::is_connected(bicycle_network)
+
+```
+
+::: {.callout-note title="Task 3"}
+To calculate centrality, the edges need to have "weights". Assuming equal cycling speed on all roads, you can use the edge length (from the column length) as a weight.
+:::
+
+To set the weights we first need to activate the edges and then we can assign attributes to the edges suing the `mutate` function from `dplyr`.
+```{r}
+bicycle_network_weighted <- bicycle_network %>%
+    activate(edges) %>%
+    mutate(length = bicycle_routes$length)
+
+```
+
+::: {.callout-note title="Task 4"}
+To compute the centrality measures you will need to
+
+1. activate the nodes (using `tidygraph::activate()`)
+2. Use `dplyr::mutate` to create new columns and populate these with the centrality measures using the functions `centrality_betweenness`, `centrality_closeness` and `centrality_degree` from `tidygraph` using the column length as weights.
+:::
+
+```{r}
+#| message: false
+#| warning: false
+
+bicycle_network_centrality <- bicycle_network_weighted %>%
+    tidygraph::activate(nodes) %>%
+    mutate(
+        cent_betweenness = tidygraph::centrality_betweenness(weights = length),
+        cent_closeness = tidygraph::centrality_closeness(weights =length),
+        cent_degree = tidygraph::centrality_degree(weights = length)
+
+    )
+
+
+```
+
+::: {.callout-note title="Task 5"}
+Convert the enriched network consisting of edges and nodes back to `sf` objects consisting of lines and points (using `activate` and `st_as_sf`).
+:::
+
+```{r}
+
+edges_sf <- bicycle_network_centrality %>%
+    activate(edges) %>%
+    st_as_sf()
+
+nodes_sf <- bicycle_network_centrality %>%
+    activate(nodes) %>%
+    st_as_sf()
+
+
+
+```
+
+::: {.callout-note title="Task 6"}
+The centrality values are attached to the points. Transfer the values to the lines by using the following function, which takes the mean centrality values over all nodes for each edge.
+:::
+```{r}
+veloland_data <- aggregate(nodes_sf, edges_sf, FUN = "mean")
+```
+
+::: {.callout-note title="Task 7"}
+Visualize the result. If necessary, transform or reasonably categorize the values to make them more comparable.
+:::
+
+Betweennes centrality is often heavily right-skewed. There is a small number of edges, which are part of almost all shortest paths. This is because there are somethimes bottle necks in networks. There might for instance be a bridge crossing a river and therefore connecting two larger parts of the network. All the shortest paths will then pass this bridge, because there is no other way to get from one place to another to begin with. So this edge will then have a massive centrality score. It will then blow the whole visualisation out of proportion. So it makes sense to deploy a log transform here. This way, other edges, which feature a moderate betweennes score, also become distinguishable from such that have a small betweennes score. 
+
+Then generally I also deployed a normalisation to [0,1] scale.
+
+
+```{r}
+#| message: false
+#| warning: false
+
+ggplot(veloland_data, aes(x = cent_betweenness)) +
+    geom_histogram(bins = 80, fill = "steelblue", color = "white", linewidth = 0.2) +
+    scale_x_continuous(labels = scales::comma) +
+    labs(title = "Distribution of betweenness centrality (raw)",
+         x = "Betweenness", y = "Count")
+```
+
+As a logarithm scaler I am using `log1p`. This is the natural logarithm of the variable value + 1. The addition of 1 handles the case, where the variable value is zero (because then, the natural logarythm is undevined).
+
+```{r}
+normalize <- function(x) (x - min(x, na.rm = TRUE)) / (max(x, na.rm = TRUE) - min(x, na.rm = TRUE))
+
+veloland_data <- veloland_data %>%
+    mutate(
+        norm_betweenness = cent_betweenness %>% log1p() %>% normalize(),
+        norm_closeness   = normalize(cent_closeness),
+        norm_degree      = normalize(cent_degree)
+    )
+```
+
+```{r}
+#| message: false
+#| warning: false
+
+tmap_mode("plot")
+
+map_betweenness <- tm_shape(veloland_data) +
+    tm_lines(col = "norm_betweenness", palette = "YlOrRd", lwd = 2,
+             title.col = "Betweenness\n(norm.)") +
+    tm_layout(main.title = "Betweenness Centrality", main.title.size = 0.9)
+
+map_closeness <- tm_shape(veloland_data) +
+    tm_lines(col = "norm_closeness", palette = "YlOrRd", lwd = 2,
+             title.col = "Closeness\n(norm.)") +
+    tm_layout(main.title = "Closeness Centrality", main.title.size = 0.9)
+
+map_degree <- tm_shape(veloland_data) +
+    tm_lines(col = "norm_degree", palette = "YlOrRd", lwd = 2,
+             title.col = "Degree\n(norm.)") +
+    tm_layout(main.title = "Degree Centrality", main.title.size = 0.9)
+
+tmap_arrange(map_degree, map_closeness, map_betweenness, ncol = 3)
+```
+
+## Discussion of Results
+
+### Closeness Centrality
+
+For closeness centrality the result is about what one expects. Nodes that are close to all other nodes are of course in the middle part of the network. Additionally there is a shift of the closest nodes into the denser part of the network. This is because nordern switzerland is much more densely durchdrungen by paths than southern switzerland (because of the alps). So since most nodes are nin northern switzerland, the nodes with the highest closeness centrality are also located in the nordern hemisphere of switzerland.
+
+### Degree Centrality
+
+The degree centrality is rather interesting. edges with dark coloring feature nodes which have a high node degree meaning that meany edges enter or exit this node. This seems to be the case for the large loop in the `Dreiländereck` and along the German shore of `Lake constants`. I am assuming that this might be, since a large number of edges from within switzerland connects to the node which then ultimatively connects to the edge on forgein theretory. 
+
+
+### Betweenness Centrality
+
+Betweenness centrality seems to be evenly distributed, but if the log transform is taken away, we will discover that there seems to be a view nodes in the swiss lowland that seem to be a choke point in the network. A lot of shortest paths travel trhough these nodes.
+
+```{r}
+#| message: false
+#| warning: false
+
+map_betweenness_raw <- tm_shape(veloland_data) +
+    tm_lines(col = "cent_betweenness", palette = "YlOrRd", lwd = 2,
+             title.col = "Betweenness\n(raw)") +
+    tm_layout(main.title = "Betweenness Centrality (raw)", main.title.size = 0.9)
+
+map_betweenness_log <- map_betweenness +
+    tm_layout(main.title = "Betweenness Centrality (log-normalised)", main.title.size = 0.9)
+
+tmap_arrange(map_betweenness_raw, map_betweenness_log, ncol = 2)
+```
+
+
+# Routing
+
+Import the two datasets and convert the veloland dataset to an undirected network using sfnetworks. I also need to set the Coordinate system for the cities explicitly, otherwise `st_network_paths` used in a later step will fail. This is weird, since both should be in the Swiss coordinate system allready. (This also happens with swiss TLM3D quite regularly, maybe the city data is a subset from the swiss TLM3D).
+
+```{r}
+#| message: false
+#| warning: false
+
+bicycle_data <- sf::st_read("./data/veloland.gpkg", quiet = TRUE)
+
+bicycle_network <- bicycle_network %>%
+     as_sfnetwork(directed = FALSE)
+
+city_locations <- sf::read_sf("./data/locations.gpkg") %>% st_transform(st_crs(bicycle_network))
+
+```
+
+
+
+::: {.callout-note title="Task 1"}
+Subset a single location and call this origin.
+:::
+
+As an origin I have choosen Chiasso since I need a vacation asap.
+
+```{r}
+
+origin <- city_locations %>%
+            filter(Ortschaft == "Chiasso")
+
+```
+
+::: {.callout-note title="Task 2"}
+Create a second object with all the other locations and call this destination.
+:::
+
+Can be done by filtering for everything except Chiasso.
+```{r}
+
+destinations <- city_locations %>%
+            filter(Ortschaft != "Chiasso")
+
+```
+
+::: {.callout-note title="Task 3"}
+Use the function `st_network_paths` from `sfnetworks` to calculate the shortest paths from origin to destination, using the column length as weight.
+:::
+
+```{r}
+#| output: false
+
+bicycle_network |>
+  activate("nodes") |>
+  st_nearest_feature(origin)
+
+path_data <- st_network_paths(bicycle_network, from = origin, to = destinations, weights = edge_length()
+)
+
+```
+
+::: {.callout-note title="Task 4"}
+The output returns a two-column `data.frame`. The column `edge_paths` returns the row numbers of the line segments that constitute the shortest path. Use these values to create an `sf` object for each path.
+:::
+
+First lets explore this using the first element of the `edge_path` object. So we only look at one path.
+```{r}
+#| message: false
+#| warning: false
+
+# create an sf_object of the network
+edges_sf <- bicycle_network %>% activate("edges") %>% st_as_sf()
+
+# grab the first set of row indices that together describe a shortest path.
+first_path_row_idx <- path_data$edge_path[[1]]
+
+# then use indexing to get these rows. This are now the linestrings that make up this path 
+first_path <- edges_sf[first_path_row_idx, ]
+
+# since first_path got demoted to a tibble, we need to add the crs again.
+first_path <- st_set_crs(first_path, st_crs(edges_sf))
+
+first_dest <- destinations[1, ]
+
+endpoint_labels <- bind_rows(
+    origin      %>% mutate(label = "Chiasso"),
+    first_dest  %>% mutate(label = first_dest$Ortschaft)
+)
+
+tmap_mode("plot")
+tm_shape(edges_sf) +
+    tm_lines(col = "grey50", lwd = 0.8, alpha = 0.7) +
+tm_shape(first_path) +
+    tm_lines(lwd = 2, col = "steelblue") +
+tm_shape(endpoint_labels) +
+    tm_dots(col = "red", size = 0.1) +
+    tm_text("label", size = 0.8, just = "left", xmod = 1.2, ymod = 0.5) +
+tm_layout(main.title = "Shortest Path: Chiasso to Geneva", main.title.size = 1)
+
+
+
+```
+
+Now this can also done using a function and a map for all segments
+
+```{r}
+# take a set of row indices passed to the function and 
+# extract the corresponding rows.
+extract_path <- function(row_indices) {
+    edges_sf[row_indices, ]
+}
+
+# apply using a map to get a list of shortest paths
+shortest_paths <- map(path_data$edge_path,extract_path)
+
+```
+
+::: {.callout-note title="Task 5"}
+Visualize the result in a map. Include origin and destination in your visualization. See Figure 2 for a possible way to visualize your result.
+:::
+
+```{r}
+#| message: false
+#| warning: false
+
+all_paths_sf <- bind_rows(
+    map2(shortest_paths, destinations$Ortschaft, ~ mutate(.x, destination = .y))
+) %>% st_set_crs(st_crs(edges_sf))
+
+points_sf <- bind_rows(
+    origin %>% mutate(type = "Origin"),
+    destinations %>% mutate(type = "Destination")
+)
+
+tmap_mode("plot")
+tm_shape(edges_sf) +
+    tm_lines(col = "grey50", lwd = 0.8, alpha = 0.7) +
+tm_shape(all_paths_sf) +
+    tm_lines(lwd = 2, col = "destination", palette = "Dark2", title.col = "Route to") +
+tm_shape(points_sf) +
+    tm_dots(col = "type", palette = c("Origin" = "red", "Destination" = "darkgreen"),
+            size = 0.1, title = "Location type") +
+    tm_text("Ortschaft", size = 0.7, just = "left", xmod = 1.2, ymod = 0.5) +
+tm_layout(main.title = "Shortest Paths from Chiasso", main.title.size = 1)
+```
+
+## Usage of AI
+
+Claude Sonnet (Anthropic) was used as an aid for this exercise. It was used to implement the tmap visualisations (including background network layers, colour-coded paths per destination, city labels, and plot titles), set up the log-normalisation and faceted centrality comparison plots, add the betweenness skew histogram, and format the document (YAML front matter, callout boxes for task descriptions, heading structure).
