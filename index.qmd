@@ -83,7 +83,7 @@ igraph::is_connected(bicycle_network)
 To calculate centrality, the edges need to have "weights". Assuming equal cycling speed on all roads, you can use the edge length (from the column length) as a weight.
 :::
 
-To set the weights we first need to activate the edges and then we can assign attributes to the edges suing the `mutate` function from `dplyr`.
+To set the weights we first need to activate the edges and then we can assign attributes to the edges using the `mutate` function from `dplyr`.
 ```{r}
 bicycle_network_weighted <- bicycle_network %>%
     activate(edges) %>%
@@ -143,7 +143,7 @@ veloland_data <- aggregate(nodes_sf, edges_sf, FUN = "mean")
 Visualize the result. If necessary, transform or reasonably categorize the values to make them more comparable.
 :::
 
-Betweennes centrality is often heavily right-skewed. There is a small number of edges, which are part of almost all shortest paths. This is because there are somethimes bottle necks in networks. There might for instance be a bridge crossing a river and therefore connecting two larger parts of the network. All the shortest paths will then pass this bridge, because there is no other way to get from one place to another to begin with. So this edge will then have a massive centrality score. It will then blow the whole visualisation out of proportion. So it makes sense to deploy a log transform here. This way, other edges, which feature a moderate betweennes score, also become distinguishable from such that have a small betweennes score. 
+Betweenness centrality is often heavily left-skewed. There is a small number of nodes which are part of almost all shortest paths. This occurrence can most likely be caused by a range of phenomena. There might for instance be a geographic obstacle that can only be passed through one tunnel or one bridge that therefore forces paths through a specific node. This node will then have a massive betweenness score. As a result, this will blow the whole visualisation out of proportion. So it makes sense to apply a log transform here. This way, other edges which feature a moderate betweenness score also become distinguishable from those that have a small betweenness score.
 
 Then generally I also deployed a normalisation to [0,1] scale.
 
@@ -159,7 +159,7 @@ ggplot(veloland_data, aes(x = cent_betweenness)) +
          x = "Betweenness", y = "Count")
 ```
 
-As a logarithm scaler I am using `log1p`. This is the natural logarithm of the variable value + 1. The addition of 1 handles the case, where the variable value is zero (because then, the natural logarythm is undevined).
+As a logarithm scaler I am using `log1p`. This is the natural logarithm of the variable value + 1. The addition of 1 handles the case where the variable value is zero (because then, the natural logarithm is undefined).
 
 ```{r}
 normalize <- function(x) (x - min(x, na.rm = TRUE)) / (max(x, na.rm = TRUE) - min(x, na.rm = TRUE))
@@ -193,23 +193,25 @@ map_degree <- tm_shape(veloland_data) +
              title.col = "Degree\n(norm.)") +
     tm_layout(main.title = "Degree Centrality", main.title.size = 0.9)
 
-tmap_arrange(map_degree, map_closeness, map_betweenness, ncol = 3)
+map_degree
+map_closeness
+map_betweenness
 ```
 
 ## Discussion of Results
 
 ### Closeness Centrality
 
-For closeness centrality the result is about what one expects. Nodes that are close to all other nodes are of course in the middle part of the network. Additionally there is a shift of the closest nodes into the denser part of the network. This is because nordern switzerland is much more densely durchdrungen by paths than southern switzerland (because of the alps). So since most nodes are nin northern switzerland, the nodes with the highest closeness centrality are also located in the nordern hemisphere of switzerland.
+For closeness centrality the result is about what one expects. Nodes that are close to all other nodes are of course in the middle part of the network. Additionally there is a shift of the closest nodes into the denser part of the network. This is because northern Switzerland is much more densely covered by paths than southern Switzerland (because of the Alps). So since most nodes are in northern Switzerland, the nodes with the highest closeness centrality are also located in the northern part of Switzerland.
 
 ### Degree Centrality
 
-The degree centrality is rather interesting. edges with dark coloring feature nodes which have a high node degree meaning that meany edges enter or exit this node. This seems to be the case for the large loop in the `Dreiländereck` and along the German shore of `Lake constants`. I am assuming that this might be, since a large number of edges from within switzerland connects to the node which then ultimatively connects to the edge on forgein theretory. 
+The degree centrality is rather interesting. Edges with dark colouring feature nodes which have a high node degree, meaning that many edges enter or exit this node. This seems to be the case for the large loop in the `Dreiländereck` and along the German shore of `Lake Constance`. I am assuming this is because a large number of edges from within Switzerland connect to the node which then ultimately connects to the edge on foreign territory.
 
 
 ### Betweenness Centrality
 
-Betweenness centrality seems to be evenly distributed, but if the log transform is taken away, we will discover that there seems to be a view nodes in the swiss lowland that seem to be a choke point in the network. A lot of shortest paths travel trhough these nodes.
+Betweenness centrality seems to be evenly distributed, but if the log transform is taken away, we will discover that there are a few nodes in the Swiss lowland that are traversed by a large number of shortest paths. This is likely due to the geographic structure of Switzerland, where the lowland corridor forms a natural bottleneck for north–south connectivity.
 
 ```{r}
 #| message: false
@@ -223,13 +225,19 @@ map_betweenness_raw <- tm_shape(veloland_data) +
 map_betweenness_log <- map_betweenness +
     tm_layout(main.title = "Betweenness Centrality (log-normalised)", main.title.size = 0.9)
 
-tmap_arrange(map_betweenness_raw, map_betweenness_log, ncol = 2)
+map_betweenness_raw
+map_betweenness_log
 ```
 
 
 # Routing
+::: {.callout-note title="Task 1"}
+Import the two datasets and convert the veloland dataset to an undirected network using sfnetworks.
+:::
 
-Import the two datasets and convert the veloland dataset to an undirected network using sfnetworks. I also need to set the Coordinate system for the cities explicitly, otherwise `st_network_paths` used in a later step will fail. This is weird, since both should be in the Swiss coordinate system allready. (This also happens with swiss TLM3D quite regularly, maybe the city data is a subset from the swiss TLM3D).
+
+I also need to set the coordinate system for the cities explicitly, otherwise `st_network_paths` used in a later step will fail. This is unexpected, since both should already be in the Swiss coordinate system. (This also happens with the Swiss TLM3D quite regularly; perhaps the city data is a subset from the Swiss TLM3D).
+
 
 ```{r}
 #| message: false
@@ -246,7 +254,7 @@ city_locations <- sf::read_sf("./data/locations.gpkg") %>% st_transform(st_crs(b
 
 
 
-::: {.callout-note title="Task 1"}
+::: {.callout-note title="Task 2"}
 Subset a single location and call this origin.
 :::
 
@@ -259,7 +267,7 @@ origin <- city_locations %>%
 
 ```
 
-::: {.callout-note title="Task 2"}
+::: {.callout-note title="Task 3"}
 Create a second object with all the other locations and call this destination.
 :::
 
@@ -271,7 +279,7 @@ destinations <- city_locations %>%
 
 ```
 
-::: {.callout-note title="Task 3"}
+::: {.callout-note title="Task 4"}
 Use the function `st_network_paths` from `sfnetworks` to calculate the shortest paths from origin to destination, using the column length as weight.
 :::
 
@@ -287,7 +295,7 @@ path_data <- st_network_paths(bicycle_network, from = origin, to = destinations,
 
 ```
 
-::: {.callout-note title="Task 4"}
+::: {.callout-note title="Task 5"}
 The output returns a two-column `data.frame`. The column `edge_paths` returns the row numbers of the line segments that constitute the shortest path. Use these values to create an `sf` object for each path.
 :::
 
@@ -313,7 +321,7 @@ first_dest <- destinations[1, ]
 endpoint_labels <- bind_rows(
     origin      %>% mutate(label = "Chiasso"),
     first_dest  %>% mutate(label = first_dest$Ortschaft)
-)
+) %>% select(label)
 
 tmap_mode("plot")
 tm_shape(edges_sf) +
@@ -343,7 +351,7 @@ shortest_paths <- map(path_data$edge_path,extract_path)
 
 ```
 
-::: {.callout-note title="Task 5"}
+::: {.callout-note title="Task 6"}
 Visualize the result in a map. Include origin and destination in your visualization. See Figure 2 for a possible way to visualize your result.
 :::
 
@@ -363,14 +371,18 @@ points_sf <- bind_rows(
 tmap_mode("plot")
 tm_shape(edges_sf) +
     tm_lines(col = "grey50", lwd = 0.8, alpha = 0.7) +
-tm_shape(all_paths_sf) +
+tm_shape(all_paths_sf %>% filter(!is.na(destination))) +
     tm_lines(lwd = 2, col = "destination", palette = "Dark2", title.col = "Route to") +
-tm_shape(points_sf) +
+tm_shape(points_sf %>% filter(!is.na(type))) +
     tm_dots(col = "type", palette = c("Origin" = "red", "Destination" = "darkgreen"),
             size = 0.1, title = "Location type") +
     tm_text("Ortschaft", size = 0.7, just = "left", xmod = 1.2, ymod = 0.5) +
 tm_layout(main.title = "Shortest Paths from Chiasso", main.title.size = 1)
 ```
+
+## Reflection
+
+`sfnetworks` seems to integrate very well with `tidyverse`. As a frequent user of `tidyverse` and piping operators, I found the scripting experience very pleasant and it was easy to write function-oriented code. The seamless conversion between `sf` objects and `sfnetwork` objects is also very practical. I assume that the provided `veloland.gpkg` was most likely already rather cleaned up. Lukas Buchmann and I first tried to solve the exercise using the data provided by the `ASTRA`. This was rather challenging, as the resulting network seemed to have a lot of gaps and other quirks that would have needed cleaning up.
 
 ## Usage of AI
 

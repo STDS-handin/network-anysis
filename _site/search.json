@@ -1,0 +1,30 @@
+[
+  {
+    "objectID": "index.html",
+    "href": "index.html",
+    "title": "Network Analysis",
+    "section": "",
+    "text": "library(sf)\nlibrary(sfnetworks)\nlibrary(remotes)\nlibrary(tmap)\nlibrary(tidyverse)"
+  },
+  {
+    "objectID": "index.html#discussion-of-results",
+    "href": "index.html#discussion-of-results",
+    "title": "Network Analysis",
+    "section": "Discussion of Results",
+    "text": "Discussion of Results\n\nCloseness Centrality\nFor closeness centrality the result is about what one expects. Nodes that are close to all other nodes are of course in the middle part of the network. Additionally there is a shift of the closest nodes into the denser part of the network. This is because northern Switzerland is much more densely covered by paths than southern Switzerland (because of the Alps). So since most nodes are in northern Switzerland, the nodes with the highest closeness centrality are also located in the northern part of Switzerland.\n\n\nDegree Centrality\nThe degree centrality is rather interesting. Edges with dark colouring feature nodes which have a high node degree, meaning that many edges enter or exit this node. This seems to be the case for the large loop in the Dreiländereck and along the German shore of Lake Constance. I am assuming this is because a large number of edges from within Switzerland connect to the node which then ultimately connects to the edge on foreign territory.\n\n\nBetweenness Centrality\nBetweenness centrality seems to be evenly distributed, but if the log transform is taken away, we will discover that there are a few nodes in the Swiss lowland that are traversed by a large number of shortest paths. This is likely due to the geographic structure of Switzerland, where the lowland corridor forms a natural bottleneck for north–south connectivity.\n\nmap_betweenness_raw &lt;- tm_shape(veloland_data) +\n    tm_lines(col = \"cent_betweenness\", palette = \"YlOrRd\", lwd = 2,\n             title.col = \"Betweenness\\n(raw)\") +\n    tm_layout(main.title = \"Betweenness Centrality (raw)\", main.title.size = 0.9)\n\nmap_betweenness_log &lt;- map_betweenness +\n    tm_layout(main.title = \"Betweenness Centrality (log-normalised)\", main.title.size = 0.9)\n\nmap_betweenness_raw\n\n\n\n\n\n\n\nmap_betweenness_log"
+  },
+  {
+    "objectID": "index.html#reflection",
+    "href": "index.html#reflection",
+    "title": "Network Analysis",
+    "section": "Reflection",
+    "text": "Reflection\nsfnetworks seems to integrate very well with tidyverse. As a frequent user of tidyverse and piping operators, I found the scripting experience very pleasant and it was easy to write function-oriented code. The seamless conversion between sf objects and sfnetwork objects is also very practical. I assume that the provided veloland.gpkg was most likely already rather cleaned up. Lukas Buchmann and I first tried to solve the exercise using the data provided by the ASTRA. This was rather challenging, as the resulting network seemed to have a lot of gaps and other quirks that would have needed cleaning up."
+  },
+  {
+    "objectID": "index.html#usage-of-ai",
+    "href": "index.html#usage-of-ai",
+    "title": "Network Analysis",
+    "section": "Usage of AI",
+    "text": "Usage of AI\nClaude Sonnet (Anthropic) was used as an aid for this exercise. It was used to implement the tmap visualisations (including background network layers, colour-coded paths per destination, city labels, and plot titles), set up the log-normalisation and faceted centrality comparison plots, add the betweenness skew histogram, and format the document (YAML front matter, callout boxes for task descriptions, heading structure)."
+  }
+]
